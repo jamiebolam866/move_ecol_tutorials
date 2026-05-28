@@ -1,0 +1,46 @@
+project:
+  type: website
+
+website:
+  title: "Deakin University Coding Club - Movement Ecology by Jamie Bolam"
+  sidebar:
+    style: "docked"
+    search: true
+    contents:
+      - text: Home
+        href: index.qmd
+
+      - text: First Steps in R
+        href: R-first-steps.qmd
+
+      - text: Load and Process Data
+        href: load_process_data.qmd
+
+      - text: Making and animating maps
+        href: map_making.qmd
+
+      - text: Easy Move Ecol Analyses
+        href: easy_analyses.qmd
+
+      - text: Net-Squared Displacement in move2
+        href: nsd_mv2.qmd
+
+      - text: MCPs and KDEs - old-skool analyses
+        href: mcp_kde.qmd
+
+      - text: Revisitation analyses with recurse
+        href: recurse.qmd
+
+      - text: Home ranges & more with ctmm
+        href: ctmm.qmd
+
+format:
+  html:
+    theme:
+      - cosmo
+      - brand
+    css: styles.css
+    toc: true
+
+
+

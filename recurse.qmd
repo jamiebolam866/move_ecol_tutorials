@@ -1,0 +1,146 @@
+---
+title: "Revisitation analysis using the recurse package"
+format: html
+execute:
+  eval: false
+---
+
+The recurse package is a simple but very effective tool. Other movement ecology analyses like kernel density estimates look at an animal's overall intensity of space use, but they don't take into account revisitations. Some places animals revisit are really important; their dens, feeding sites and water sources, for example. It also ties into human-wildlife relations; how often does an animal visit settlement boundaries, a road, a farm? Recurse offers an easy way to find these things out.
+
+Vignette (2024): https://cran.r-project.org/web/packages/recurse/vignettes/recurse.html
+
+Recurse accepts two formats of data:
+1) a simple 4-column dataframe:
+x          y                   t     id
+
+x : x coords
+y: y coords
+t: datetime
+id: id name e.g. duck1
+
+Note: x and y coordinates must NOT be latlon decimal degrees, but a use projection in meters Recurse can also work with move objects (from the move original package, not move2)
+
+In this example, we will work with the dataframe example. 
+
+I am first transforming the coordinate columns of my duck1_y2 move2 object from WGS84 (a decimal degrees projection) to EPSG 7855 (a meters-based projection suitable for Australia) using the st_transform() function from the sf package.
+Then, I extract the xy coordinates using sf::st_coordinates() and assemble my dataframe.
+
+``` {r}
+# The recurse package supports both move objects and data frames
+# here we demonstrate creating a data frame with the x, y, time, and id
+# duck1_y2.df = as.data.frame
+# convert duck1_y2_mv into projected coord system in m (WGS84 is lat long, not suitable for distance-based analysis)
+
+# using EPSG 7855
+duck1_y2_mv_7855 <- sf::st_transform(duck1_y2_mv, crs = 7855)
+# now make recurse input dataframe
+duck1_y2.df = data.frame(st_coordinates(duck1_y2_mv_7855))
+duck1_y2.df$time = duck1_y2_mv_7855$time
+duck1_y2.df$id = "duck1_y2"
+```
+
+# Deciding patch size
+The main criteria for deciding patch size is what your question is. Are you looking at large-scale foraging movements (in which case you want a larger patch size), or small-scale denning revisitations (in which case a smaller patch size is more suitable). 
+
+If you are unsure how to choose, the recurse vignette shares how to test different radii.
+https://cran.r-project.org/web/packages/recurse/vignettes/recurse.html
+
+```{r}
+# information to select radius
+# calculate time and distance of each step
+timeDiff = diff(as.numeric(duck1_y2.df$time) / 3600) # in hours
+distDiff = sqrt(diff(duck1_y2.df$X)^2 + diff(duck1_y2.df$Y)^2)
+
+sum(timeDiff > 1) / length(timeDiff)
+# 0.5088308
+
+# make a histogram
+hist(
+  distDiff,
+  breaks = 30,
+  xlab = "Step Length",
+  main = "Duck 1 year 2 Step Length - frequency",
+  col = "gray70"
+)
+# We can see there's probably an outlier since our line goes all the way to 10,000.
+```
+
+# Running a basic recurse analysis
+Let's say we've decided on a 50m patch radius, since we want to understand relatively small-scale patch revisitation (e.g. nesting). We simply run getRecursions() on our data and specify the radius size. 
+
+The recurse objecct has various aspects, as shown below. Have a look and see what they are like.
+```{r}
+# 500m radius as neighbourhood movement analysis
+duck1_y2visit50 = getRecursions(duck1_y2.df, 50)
+
+# different aspects of recurse object
+duck1_y2visit50$revisits
+duck1_y2visit50$residenceTime
+duck1_y2visit50$radius
+duck1_y2visit50$dists
+duck1_y2visit50$revisitStats
+duck1_y2visit50$timeunits
+
+
+# plot results
+par(mfrow = c(1, 1), las = 1, bty = "l")
+plot(duck1_y2visit50, duck1_y2.df) # full view
+drawCircle(275000, 5763000, 500) # shows what 50m radius looks like
+plot(
+  duck1_y2visit50,
+  duck1_y2.df,
+  xlim = c(280000, 285000),
+  ylim = c(5762000, 5769000)
+) # zoomed in
+
+hist(
+  duck1_y2visit50$revisits,
+  breaks = 20,
+  xlab = "Revisitations",
+  main = "Duck 1 year 2 50m revisits - frequency",
+  col = "gray70"
+)
+hist(
+  duck1_y2visit50$revisitStats$timeInside,
+  breaks = 20,
+  xlab = "Time inside (h)",
+  main = "Duck 1 year 2 50m revisits - time inside",
+  col = "gray70"
+)
+
+par(mfrow = c(1, 1))
+```
+
+There are many things we can do with this data. For example, additional metrics can be examined on a per visit basis.
+
+For example, one could examine the correlation of visit length with visit entrance time.
+```{r}
+# If needed, ensure `entranceTime` is in POSIXct format
+# duck1_y2visit50$revisitStats$entranceTime <- as.POSIXct(duck1_y2visit50$revisitStats$entranceTime, format = "%Y-%m-%d %H:%M:%S")
+
+# Extract the hour from `entranceTime`
+duck1_y2visit50$revisitStats <- duck1_y2visit50$revisitStats %>%
+  mutate(entranceHour = format(entranceTime, "%H")) # Extract hour as a factor
+
+# Create the boxplot
+ggplot(duck1_y2visit50$revisitStats, aes(x = entranceHour, y = timeInside)) +
+  geom_boxplot() +
+  labs(
+    x = "Entrance Hour (Hour of Day)",
+    y = "Visit Duration (h)",
+    title = "Duck 1 50m Patch Visit Duration by Entrance Hour"
+  ) +
+  theme_bw()
+
+```
+
+Recurse offers various other ways to look at revisitations:
+- Revisits to a given polygon (e.g. a national park boundary, farm field, town boundaries)
+- Revisits to specified locations (we can set ourselves)
+- Revisits to clustered locations (e.g. systematically identifying heavily-visited areas (i.e. in the top 20% of revisited sites) using k-means clustering)
+
+For all options, revisitation analyses can be done on multiple individuals, not just individual trajectories. E.g. if we want to understand the commonly re-visited areas, this is perfect.
+
+To learn more, use the updated 2024 recurse vignette here:
+https://cran.r-project.org/web/packages/recurse/vignettes/recurse.html
+

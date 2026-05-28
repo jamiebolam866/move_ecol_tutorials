@@ -1,0 +1,15 @@
+---
+title: "Movement Ecology Toolbox"
+subtitle: "A guide by Jamie Bolam"
+---
+
+Movement ecology is a constantly-evolving discipline. Especially in the past decade, there have been a lot of new advances and tools coming out. It can thus be hard to synthesise and learn about all the different analytical options available to us, and it can feel really confusing and overwhelming sometimes!
+
+In this tutorial series, I share the tools, packages and workflows I have personally used in my job as a wildlife conservation research consultant, and in my postgraduate studies at both the University of Oxford (MSc) and Deakin University (PhD). As I continue to use learn and use more tools myself, I will update this website. 
+
+I hope it gives you some more confidence and clarity in how to analyse your animal tracking data :)
+
+If you have queries or questions, please contact me at j.bolam@deakin.edu.au
+
+This is a Quarto website.
+To learn more about Quarto websites visit <https://quarto.org/docs/websites>.

@@ -1,0 +1,35 @@
+---
+title: "MCPs and KDEs in R: Old Skool Analyses"
+format: html
+---
+
+This section contains explanations and guiding resources, but no code, since I haven't used these methods in R in a long time. You can also perform both of these methods in QGIS, and probably ArcGIS too. 
+
+# Key resources
+If you want some R code, consider using the amt (animal movement tools) R package, and refer to this publication:
+Signer & Fieberd, 2021: A fresh look at an old concept: home-range estimation in a tidy world
+https://pmc.ncbi.nlm.nih.gov/articles/PMC8048401/
+
+This publication also makes a great point: since there area many ways to define a home range, make sure you start your research with a good question! Only then will you be prepared to know which statistical methods can actually help you answer your questions.
+
+Fieberg & Börger, 2012: Could you please phrase “home range” as a question? 
+
+# Minimum Convex Polygons (MCPs)
+Minimum Convex Polygons (MCPs) are the oldest method used to estimate an animal's home range. Given a set of locations from an animal's tracking data, you simply draw a shape around the outermost points, so all points are either inside or form the edge of the polygon. Some studies these days still use them as a method of home range estimation so that they can be compared with past methods, or because they are quick, simple and intuitive. Sometimes, that's what your stakeholders might want, or if you are just getting started in movement ecology, it is a great first step to learn. 
+
+One use of MCPs that I saw during my time as a wildlife conservation research consultant in Taiwan was __rolling MCPs__ e.g. seeing how the size of a 10-day MCP changes over time. When an animal is newly released in an area (in our case, rescued/rehabilitated Formosan black bears), seeing how the size of it's average 10-day (or whatever timeframe you want) home range changes over time is a nice way to visualise post-release exploration and home range stabilisation, or identify other significant life events like hibernation.
+
+# Kernel Density Estimates (KDEs)
+Kernel Density Estimates (KDEs) were the next step in the evolution of home range estimation. They work by considering the DENSITY of GPS points, not just where they are located in space. If there is an area where you have more locations from your tracked animal, it would be
+This is where you may encounter terms like the "50% home range" - the most heavily used area where the animal spends half of it's time/locations. Similarly, a 95% home range would contain the 95% of points used most, omitting the 5% outermost/outlying points. 
+
+The biggest weakness of the traditional KDE is that it takes into account space, but not time. In other words, KDEs assume your tracking data is IID - Independently and Identically Distributed. This basically means that there should be no temporal autocorrelation between GPS points. For VHF tracking datasets, or GPS datasets with a very low fixing frequency, this assumption may hold. However, many modern datasets sample locations at a rate that means they are autocorrelated in space and time. This is why, especially before more modern methods were developed, many research workflows would want a standardised GPS sampling schedule, forcing you to clip out a lot of your hard-earned locations from modern datasets. A standardised sampling schedule might be fine for a researcher's specially-designed project, but not for real-life wildlife managers. 
+Many modern GPS datasets contain locations separated by only a few hours, or even a few minutes, and sometimes in specific circumstances only. 
+
+For example, when we released black bears back into the wild, we would have their GPS collars set to record locations every 10 minutes for the first few days, so we can react if something goes wrong post-release. Then, we would set it to record every hour, and eventually every 2 hours, to optimise the battery life of the tracker so we can track the bear for as long as possible. However, if the collared bear then approached a village, crossing a digital fence we have set on the GPS collar software, the collar would start uploading locations at a higher frequency again, so we can track the bear at a higher resolution and try drive it away from town to avoid a conflict situation developing. 
+
+In another example, Druid Technology tags can use a BOOST mode to record high-frequency locations when they detect a sudden increase in ODBA (Overall Body Dynamic Acceleration) - e.g. when a bird starts flying. This allows you to capture more of the bird's flight path in extreme detail. In cases like these with variable fix rates, KDEs can produce some pretty whacky shapes that are not reliable home range estimates.
+
+ This is a key limitation that has since been addressed (see ctmm chapter of this guide). 
+
+ If you want to run KDEs, you can set your data as IID in ctmm, and the akde() function will run a traditional KDE.

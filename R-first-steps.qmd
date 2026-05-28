@@ -1,0 +1,91 @@
+---
+title: "First Steps in R"
+format: html
+execute:
+  eval: false
+---
+# Introduction
+In this tutorial, we will install and load the packages required for the Movement Ecology Toolbox. We will also set up a convenient folder structure for organising our R projects and data management.
+
+# Install packages
+```{r}
+install.packages("pak")
+pak::pkg_install("usethis")
+pak::pkg_install("tidyverse")
+pak::pkg_install("devtools")
+pak::pkg_install("dygraphs")
+pak::pkg_install("ggmap")
+pak::pkg_install("gganimate")
+pak::pkg_install("geosphere")
+pak::pkg_install("move2")
+pak::pkg_install("sf")
+pak::pkg_install("units")
+pak::pkg_install("recurse")
+pak::pkg_install("ctmm")
+pak::pkg_install("amt")
+pak::pkg_install("terra")
+pak::pkg_install("fields")
+```
+
+# Load packages
+```{r}
+library(usethis)
+library(tidyverse)
+library(devtools)
+library(dygraphs)
+library(ggmap)
+library(gganimate)
+library(geosphere)
+library(move2)
+library(sf)
+library(units)
+library(recurse)
+library(ctmm)
+library(amt)
+library(terra)
+library(fields)
+```
+
+# Additional settings for good data science
+Set R so it doesn't save any data in the environment/variables section between sessions. It might be annoying at first, but it is great practice to ensure you write every R script in a way that it loads all the variables you need. This makes it much easier when sharing your R projects with others, or if you return to your project after a while and forget how to load the objects you need!
+``` {r}
+usethis::use_blank_slate()
+```
+
+I also really recommend  using the r4np (R for non-programmers) function here to set up convenient folders for organisation and data management. Within your working directory, it will create separate folders for:
+- raw data
+- tidy data 
+- R scripts 
+- plot 
+- reports 
+- miscellaneous 
+
+``` {r}
+pak::pkg_install("ddauber/r4np")
+library(r4np)
+r4np::create_project_folder()
+
+```
+
+# Working directories 
+We need to check our working directory and set it to the correct location. This way, we can use relative file paths to load and save data, which is more efficient and less error-prone than using absolute file paths.
+```{r}
+
+getwd()
+# all good
+# if not, set to:
+setwd(
+  "/Users/jamiebolam/Documents/Conservation & Career/Career/DPhil/Deakin x Druid GPS trackers/PhD/Coding Club/Jamie - Movement Ecology Toolbox/move_ecol_coding_club_deakin"
+)
+# or your own working directory
+# then check it worked
+getwd()
+```
+# Additional settings for ggmaps: 
+For ggmaps: get a stadiamap API key
+```{r}
+ggmap::register_stadiamaps(
+  key = "inset-your-stadiamaps-api-key-here",
+  write = TRUE
+)
+```

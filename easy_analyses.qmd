@@ -1,0 +1,154 @@
+---
+title: "Easy tracking analyses in R"
+format: html
+execute:
+  eval: false
+---
+
+Once we've loaded and plotted our data, it's time to do some basic analyses. 
+
+### Altitude over time
+Nothing too fancy, just things like plotting the altitude of our tracked animal over time. Let's get into it!
+
+There are two options to plot up your data.
+One is a good ole-fashioned ggplot. If you want a static map, that's fine. The other option is a dygraph, which is an interactive plot. Dygraphs are perfect for long time-series data and data exploration, where you want to zoom in and out and inspect every nook and cranny of your dataset.
+
+```{r}
+# altitude over time - in a dygraph format
+(duck1_y2_altitude_dygraph <- duck1_y2 %>%
+  select(time, altitude) %>%
+  xts::xts(order.by = .$time) %>%
+  dygraphs::dygraph() %>%
+  dygraphs::dyAxis("y", label = "Altitude (m)") %>%
+  dygraphs::dyOptions(colors = "grey") %>%
+  dygraphs::dyRangeSelector())
+
+# altitude over time - ggplot
+(duck1_y2_altitude_plot <- ggplot(duck1_y2, aes(x = time, y = altitude)) +
+  geom_line() +
+  labs(title = "Duck 1 Year 2 Altitude Over Time") +
+  xlab("Time") +
+  ylab("Altitude (m)") +
+  theme_minimal())
+```
+
+From these graphs, you might see clear anomalous points that were missed in our previous filtering. E.g., we might want to remove points over 5000m or 10,000m
+``` {r}
+# we can see some points where the altitude is super high - over 5000m or even 10,000m.
+# this is probably an error, so we will filter out any points over 5000m
+duck1_y2 <- duck1_y2 %>%
+  filter(altitude < 1000)
+
+# then you can re-run the plots above and save them if you want
+
+# save plot
+ggsave(
+  filename = "03_plots/duck1_altitude.png",
+  plot = duck1_altitude_plot,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+```
+
+# Distance and time between points
+We might also want to calculate the distance and time between subsequent GPS fixes. Here's the code to do it by calculating the mean and cumulative distances between points.
+``` {r}
+# mean distance between points - distHaversine from geosphere package
+duck1_y2 <- duck1_y2 %>%
+  mutate(
+    distance = distHaversine(
+      cbind(longitude, latitude), # find the Haversine distance between a given lat lon point
+      lag(cbind(longitude, latitude)) # and the previous lat lon point (lag function shifts data back 1)
+    )
+  )
+
+# check it worked
+glimpse(duck1_y2)
+
+summary(duck1_y2$distance)
+#  Min.  1st Qu.   Median     Mean  3rd Qu.     Max.     NA's
+#   0.00    10.34    23.11   181.32    63.81 10626.82        1
+
+hist(
+  duck1_y2$distance,
+  breaks = 20,
+  main = "Histogram of distances between points",
+  xlab = "Distance (m)"
+)
+
+# calculate cumulative distance between each point and previous point
+# it needs to account for the NA in the first row
+duck1_y2 <- duck1_y2 %>%
+  mutate(cumulative_distance = cumsum(replace_na(distance, 0)))
+# find total cumulative distance by calling the final row
+duck1_y2$cumulative_distance[nrow(duck1_y2)]
+# 998852.6 m
+998852.6 / 1000
+# 998.8526 km
+
+``` 
+
+Another option is to calculate the length of the straight-line distance between our GPS points.
+``` {r}
+# figuring out the length of the straight-line distance between points
+# (has it's issues if you have big time gaps between fixes)
+# Create an sf POINT object from the GPS points (assuming WGS84)
+duck1_y2_points <- st_as_sf(
+  duck1_y2,
+  coords = c("longitude", "latitude"),
+  crs = 4326 # WGS84
+)
+
+# Example: Transform to CRS 7855 (Australia)
+duck1_y2_GPS_points_7855 <- st_transform(duck1_y2_points, crs = 7855)
+
+# Combine the points into a LINESTRING
+duck1_y2_line_7855 <- duck1_y2_GPS_points_7855 %>%
+  summarise(geometry = st_combine(geometry)) %>% # Combine all points into one multilinestring
+  st_cast("LINESTRING") # Cast to LINESTRING
+
+plot(duck1_y2_line_7855)
+
+# Save to shapefile
+st_write(
+  duck1_y2_line_7855,
+  "01_tidy_data/duck1_y2_movement_path.shp",
+  delete_layer = TRUE
+)
+
+# save as RData with duck1_y2_GPS_points_7855
+
+save(
+  duck1_y2_GPS_points_7855,
+  duck1_y2_line_7855,
+  file = '01_tidy_data/duck1_y2_GPS_points_line_sf_7855.RData'
+)
+# reload sf version of duck1_y2 GPS points in 7855 projection with a line shapefile too
+load('01_tidy_data/duck1_y2_GPS_points_line_sf_7855.RData')
+
+# Calculate total movement path length (planar, no terrain)
+# This is an ESTIMATE based on the length of the lines between the GPS data.
+# In reality, the distance will be even larger, although we cannot say by how much.
+st_length(duck1_y2_line_7855)
+# 986873.7 [m]
+# in km
+st_length(duck1_y2_line_7855) / 1000
+# 986.8737 km
+# pretty similar to the method above with cumulative distance between points
+```
+
+Finally, here's some code to calculate the time lag in minutes and hours between each GPS point.
+``` {r}
+# calculate time lag in mins and hours between each gps point
+duck1_y2 <- duck1_y2 %>%
+  mutate(
+    time_diff_h = as.numeric(difftime(time, lag(time), units = "hours")),
+    time_diff_m = as.numeric(difftime(time, lag(time), units = "mins"))
+  )
+# check it worked
+glimpse(duck1_y2)
+# success
+```
+
+Well done! 

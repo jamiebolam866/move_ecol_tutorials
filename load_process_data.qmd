@@ -1,0 +1,149 @@
+---
+title: "Loading and Processing GPS data"
+format: html
+execute:
+  eval: false
+---
+
+# Introduction
+This tutorial introduces how to load and process GPS tracking data in R. 
+
+# Data background:
+ We have data from 3 Pacific Black Ducks from Dr Hui Yu's PhD project.
+
+ For your own purpose, you may want to load in your own GPS data. Otherwise, you can download some from Movebank - a free, online animal tracking database (https://www.movebank.org/cms/movebank-main)
+
+ Here we will just focus on loading the data of one of the ducks.
+ 
+ We will then use glimpse() to check the first few rows of each column of the data to understand what we are working with and how to process it for our analyses.
+
+# Import data
+``` {r}
+duck1 <- read_csv(
+  "00_raw_data/Ecotopia-Data-[20200101-20260504]/c4c9ad1ddc4e[5210]-LocationData-GNSS-[20200101-20260504].csv"
+)
+duck2 <- read_csv(
+  "00_raw_data/Ecotopia-Data-[20200101-20260504]/ea14dcaf2d4b[5246]-LocationData-GNSS-[20200101-20260504].csv"
+)
+
+duck3 <- read_csv(
+  "00_raw_data/Ecotopia-Data-[20200101-20260504]/f914c5bac5d0[5239]-LocationData-GNSS-[20200101-20260504].csv"
+)
+
+```
+
+# Checking data
+There are many ways to check your data in R. You could use the  head() and tail() functions, str(), print(), View() or glimpse(). I personally like glimpse() as it shows the first few rows of each column, unlike head() or tail(). 
+``` {r}
+# check data
+glimpse(duck1)
+
+# Rows: 34,429
+# Columns: 20
+# $ UUID                   <chr> "c4c9ad1ddc4e", …
+# $ `Transmitting time`    <dttm> 2020-01-19 08:1…
+# $ `Collecting time`      <dttm> 2020-01-19 08:1…
+# $ Longitude              <dbl> 200.0000, 200.00…
+# $ Latitude               <dbl> 200.00000, 200.0…
+# $ Altitude               <dbl> 0.0, 0.0, 0.0, 6…
+
+# ... etc
+```
+
+# Processing data
+Druid tags set latitude and longitude as 200 if the fix failed.
+We will flag these as "Failed" and the rest as "Successful" in a new column called "fix_success"
+We will also flag fixes where Altitude < 0 as "Failed" as well, as these are likely to be errors
+We will also rename the columns so they are easier to refer to, make a new numeric timestamp column, ensure data arranged by chronological order, and select the columns we want in a specified order.
+
+While here we are doing this just for duck1, ideally we would make a function to do this for all our tracking datasets - especially if they come in the same data format.
+``` {r}
+duck1 <- duck1 %>%
+  mutate(
+    fix_success = ifelse(
+      Latitude == 200 & Longitude == 200 | Altitude < 0,
+      "Failed",
+      "Successful"
+    )
+  ) %>%
+  filter(fix_success == "Successful") %>%
+  rename(
+    id = UUID,
+    transmitting_time = `Transmitting time`,
+    time = `Collecting time`,
+    longitude = Longitude,
+    latitude = Latitude,
+    altitude = Altitude,
+    altitude_ellipsoid = `Altitude (Ellipsoid)`,
+    speed = Speed,
+    north_speed = `North Speed`,
+    east_speed = `East Speed`,
+    down_speed = `Down Speed`,
+    course = Course,
+    satellite_used = `Satellite used`,
+    positioning_mode = `Positioning mode`,
+    hor_accuracy = HorAccuracy,
+    ver_accuracy = VerAccuracy,
+    gps_time_consumption = `GPS time consumption`,
+    data_source = `Data Source`,
+    hdop = HDOP,
+    vdop = VDOP
+  ) %>%
+  # make a new column called t which is time in UNIX timestamp format
+  mutate(t = as.numeric(time)) %>%
+  arrange(time) %>%
+  select(
+    id,
+    time,
+    t,
+    longitude,
+    latitude,
+    altitude,
+    altitude_ellipsoid,
+    speed,
+    north_speed,
+    east_speed,
+    course,
+    satellite_used,
+    positioning_mode,
+    hor_accuracy,
+    ver_accuracy,
+    gps_time_consumption,
+    data_source,
+    hdop,
+    vdop
+  )
+```
+
+We will also cut the dataset into separate years. For the rest of this tutorial, we are focusing on the 2nd year of duck movement data.
+``` {r}
+# cut dataset so it is just the first year of the duck movement
+duck1_y1 <- duck1 %>%
+  filter(time < as.POSIXct("2021-01-21"))
+
+# filter for duck1 to second year of movement data
+duck1_y2 <- duck1 %>%
+  filter(time >= as.POSIXct("2021-01-21") & time < as.POSIXct("2022-01-21"))
+```
+
+# Filtering data
+We can calculate the step lengths between points and figure out if there are any suspicious outliers
+This should be combined with visual inspection of the map & data (often easier in QGIS etc)
+```{r}
+# calculate time and distance of each step
+timeDiff = diff(as.numeric(duck1_y2.df$time) / 3600) # in hours
+distDiff = sqrt(diff(duck1_y2.df$X)^2 + diff(duck1_y2.df$Y)^2)
+
+sum(timeDiff > 1) / length(timeDiff)
+# 0.5088308
+
+# make a histogram
+hist(
+  distDiff,
+  breaks = 30,
+  xlab = "Step Length",
+  main = "Duck 1 year 2 Step Length - frequency",
+  col = "gray70"
+)
+# We can see there's probably an outlier since our line goes all the way to 10,000.
+```

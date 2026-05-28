@@ -1,0 +1,38 @@
+# R session/history files
+.Rhistory
+.RData
+.Ruserdata
+
+# quarto site directory
+/.quarto/
+/_site/
+
+# RStudio / Positron settings
+.Rproj.user/
+
+# macOS
+.DS_Store
+
+# Quarto cache
+.quarto/
+
+# Knitr / execution cache
+*_cache/
+cache/
+
+# Temporary files
+*.log
+*.tmp
+
+# Rendered files (optional)
+# Uncomment if you DON'T want rendered HTML committed
+# *.html
+
+# Python virtual envs (if relevant later)
+venv/
+.env/
+
+# Large data files (optional)
+# data/raw/
+# *.rds
+# *.qs

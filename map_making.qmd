@@ -1,0 +1,133 @@
+---
+title: "Making and animating maps in R"
+format: html
+execute:
+  eval: false
+---
+Now we've imported our data, the next thing to do is put it in a map and see what it looks like.
+This is really important - in many cases it is really easy to visually spot outliers or erroneous GPS fixes. 
+To be honest, I also find it useful to use a GUI (graphical user interface) software like QGIS to visualise GPS tracking data, since you can then click on each GPS point and get information immediately. In R, this can probably be done too, but might be a bit slower/clunkier.
+
+# Very basic maps - movement over time
+```{r}
+# basic map using the plot function
+# colouring the number of rows instead of time
+plot(
+  duck1_y2$longitude,
+  duck1_y2$latitude,
+  col = viridis_pal()(nrow(duck1_y2)),
+  pch = 20,
+  xlab = "x",
+  ylab = "y"
+)
+
+# with colour by time
+cols <- viridis_pal()(100)
+
+time_scaled <- rescale(as.numeric(duck1_y2$time), to = c(1, 100))
+
+plot(
+  duck1_y2$longitude,
+  duck1_y2$latitude,
+  col = cols[round(time_scaled)],
+  pch = 20,
+  xlab = "Longitude",
+  ylab = "Latitude"
+)
+```
+
+This is a nice quick start, but we can make something prettier.
+
+# Preparing our map data
+To make our map using the ggmap package, we first create a bounding box of our data. This is just the outer GPS coordinates, so we know we can view ALL our data in the map.
+``` {r}
+# Step 1: make a cool map showing locations of the duck over time
+
+# first, make a bounding box
+bbox_duck1_y2 <- ggmap::make_bbox(
+  lon = duck1_y2$longitude,
+  lat = duck1_y2$latitude,
+  f = 0.1
+)
+```
+
+Next, we need to use a given R basemap to plot our tracking data onto. We will use stadiamaps. Go to their website to sign up and get your free API key, activate it (in the "First Steps in R" chapter) and then run this code below:
+```{r}
+# load data from stadiamap
+mybasemap_duck1_y2 <- get_stadiamap(bbox_duck1_y2, zoom = 12)
+```
+
+Since tracking data is a time-series trajectory, it is really useful to colour the tracks over time. To do this, we will set the start and end dates and points here.
+```{r}
+# create a colour scale legend with start and end dates or remove the legend
+start_date_duck1_y2 <- format(min(duck1_y2$time), "%Y-%m-%d")
+end_date_duck1_y2 <- format(max(duck1_y2$time), "%Y-%m-%d")
+
+# extract first and last points from dataset
+start_point_duck1_y2 <- duck1_y2[1, ]
+end_point_duck1_2 <- duck1_y2[nrow(duck1_y2), ]
+```
+
+# Plotting our map using ggmap
+The time has finally come! Are you ready to plot your own epic map? Give the code below a crack.
+```{r}
+(mymap_paths_duck1_y2 <- ggmap(mybasemap_duck1_y2) +
+  geom_point(
+    data = duck1_y2,
+    aes(x = longitude, y = latitude, colour = t)
+  ) +
+  geom_path(
+    data = duck1_y2,
+    aes(x = longitude, y = latitude, colour = t)
+  ) +
+  # add a title
+  ggtitle("Duck 1 year 2 movement path") +
+
+  # customise axis labels and colour scale
+  labs(x = "Longitude", y = "Latitude") +
+  scale_color_distiller(
+    name = "time",
+    palette = "YlOrBr",
+    direction = 1,
+    breaks = c(min(duck1_y2$t), max(duck1_y2$t)),
+    labels = c(start_date_duck1_y2, end_date_duck1_y2)
+  ) +
+  theme(legend.position = "bottom"))
+
+# check out the plot
+mymap_paths_duck1_y2
+
+```
+
+# Saving our map
+It's always important to save your plots in an appropriate folder. A folder, say, like the ones we set up in the First Steps section!
+
+``` {r}
+ggsave(
+  filename = "03_plots/duck1_y2_movement_path.png",
+  plot = mymap_paths_duck1_y2,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+```
+
+# Animating our map
+Seeing all the tracking data in one static image is cool and all, but how about we breathe some life into our map? Thankfully, this is easy to do with the gganimate package. The keys are the transition_reveal() and anim_save() functions. Play with the number of frames and frames per second to alter the length of your gif. This will depend on the duration and resolution of your dataset, and the purpose of the gif.
+``` {r}
+# now to make it into a gif!
+path_animate_plot_duck1_y2 <- mymap_paths_duck1_y2 +
+  transition_reveal(along = time) +
+  labs(
+    title = "Duck 1 year 2 movement path",
+    subtitle = 'Date: {format(frame_along, "%Y-%m-%d")}'
+  )
+
+# animate and save
+anim_save(
+  filename = "03_plots/duck1_y2_movement_path.gif",
+  animation = animate(path_animate_plot_duck1_y2, nframes = 100, fps = 10)
+)
+```
+
+Now, open your gif file up in a browser. Well done! You should have a fully-fledged gif. Wowzers!

@@ -1,0 +1,421 @@
+---
+title: "home range, occurrence distributions, periodicity & more using continous-time movement models"
+format: html
+execute:
+  eval: false
+---
+
+# Introducing ctmm
+ctmm (continous time movement models) is a very powerful package that deals with a key problem in modern tracking data; autocorrelation.
+
+As tracking technology improves, it is more feasible to get finer-scale data, with less time between location fixes. This means that in most modern datasets, we have pretty detailed data on animal movements. 
+
+Location x will thus be inherently closer in space and time to location x-1, compared with location x-100. If we were only taking one location per week, this assumption may not hold as much.
+This greatly impacts what kind of analyses we can do. Previous home range calculation methods like kernel density estimates (KDE) look solely at the density of fixes in a location; the denser they are, the more important that area is supposed to be, and the more 'core' that area is in the animal's home range.
+
+However, what happens when your fixing interval changes? Sometimes you might take locations every 1 minute, then 10 minutes, then every 1h, then only twice a day. This depends on your management goals and what you what to use your battery life on. 
+
+In the past, movement ecologists often thinned their data so the assumptions of the analytical methods can hold true. This is stupid. Why should we have to get rid of our hard-earned data? We should instead be making better analytical tools. 
+
+In the past, discrete-time correlated random walk models (CRW) served as the foundation for analysing location data. However, they confound the sampling and movement processes, thus their parameters depend sensitively on the sampling schedule, meaning it is difficult to draw inferences on the underlying movement processes. The animals keep moving even when they are not being sampled, of course. 
+
+ctmmm treats animal movement data as a continuous, not discrete, process. It fits your data to a variety of different movement models, to find the optimal assumption.
+
+- IID: independent identical distribution - no autocorrelation in the data.
+- BM (Brownian Motion): treats animal movement as particles - a standard model of regular diffusion, where velocities are uncorrelated and space use is not limited. BM can be appropriate for data that are sampled both too coarsley to reveal velocity autocorrelation, and too briefly to show range residency. Not suitable for Home Range analses as it is by design an endlessly diffusing process.
+- OU: Ornstein-Uhlenbeck - combines brownian motion with a tendency to stay in a given area. Used where data lacks evidence of directional persistence.
+- IOU: Integrated Ornstein Uhlenbeck. Diffuses endlessly like BM, but unlike BM, features autocorrelated velocities at short time scales. IOU is therefore appropriate for finely sampled data sets that show directional persistence, but where sampling duration was too brief to identify range residency.
+- OUF - Ornstein-Uhlenbeck Foraging -  a hybrid of the OU and IOU processes that features both correlated velocities and restricted space use (Fleming et al. 2014a,b). The OUF process will be appropriate for many modern data sets where sampling is both fine enough to reveal velocity autocorrelation and long enough to show range residency.
+
+Read up on the different movement models ctmm offers (Calabrese et al,. 2016), so you understand how your data is interpreted and what you can and can't do with it.
+
+## If you need more help
+Here's a link to the ctmm website - they have a few great vignettes
+https://ctmm-initiative.github.io/ctmm/
+
+ctmm is constantly being updated and has a very active google user's group. Check it out if you need help.
+https://groups.google.com/g/ctmm-user?pli=1
+
+# Preparing our data
+ctmm has a special data format called "telemetry".
+It basically runs on a Movebank data format. The most important parts are:
+- coordinates (x and y in separate columns)
+- timestamps (datetime; these are continuous-time models, after all. Make sure you only provide one time column in your dataset, or otherwise specify which column is the time column)
+- animal ID
+
+Other information is optional.
+
+``` {r}
+# first, convert to ctmm 'telemetry' object
+duck1_y2_tel <- ctmm::as.telemetry(duck1_y2)
+# Minimum sampling interval of 8 seconds in unknown
+```
+
+We also get a warning as when I ran this code, I didn't have a column labled 'id' that the telemetry function picked up; it was still called UUID.
+``` {r}
+# Warning message:
+# In as.telemetry.data.frame(duck1_y2) :
+#   No MoveBank or GBIF identification found. Assuming data corresponds to one indiviudal.
+# ctmm requires a movebank data format; e.g. renaming UUID to id
+# this is especially important if we want to run ctmm on multiple individuals at once
+```
+
+It's also important to check your geospatial data's coordinate reference system and assign the right one if it is not set. Once the right CRS is set, you can then transform it to a different CRS + projection if you needed to. But don't transform/project it if you haven't set the original CRS yet!
+``` {r}
+# check the CRS
+projection(duck1_y2_tel)
+# WGS84
+# [1] "+proj=tpeqd +lat_1=-38.2223611126933 +lon_1=144.491002766765 +lat_2=-38.226551061882 +lon_2=144.533591162092 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+
+```
+
+# Calibration and telemetry error - using stationary data
+It is also possible to use GPS calibration data (e.g. from our trackers being stationary) to factor in GPS error in our datasets. That is beyond the scope of this tutorial. If you are seriously using ctmm for your research, I strongly encourage you to check out the ctmm Telemetry Error vignette to learn more. https://ctmm-initiative.github.io/ctmm/articles/error.html
+
+# Plotting telemetry data
+Telmetry data is really easy to plot. If you have included the DOP (dilution of precision) columns in your telemetry object, ctmm will automatically adjust the size of the points based on the DOP.
+``` {r}
+# plot our data
+# unless disabled, ctmm automatically changes the point size by the DOP
+# (a measure of gps uncertainty)
+ctmm::plot(duck1_y2_tel)
+title("Duck 1 year 2 movement with DOP")
+
+# save the image using png() if you wish
+# if making a plot using png(),
+# first you call the function with the designated pathname and image resolution
+png("03_plots/duck1_y2_ctmm_plot.png", width = 800, height = 600, res = 100)
+ctmm::plot(duck1_y2_tel)
+title("Duck 1 year 2 movement with DOP")
+# then you need to call dev.off() to save the image and close the plotting device
+dev.off()
+```
+
+# Sampling schedules
+ctmm also offers an easy way to check the main sampling schedules present in your gps data. This is done using the dt.plot() function.
+For example, in our duck data, we can see quite a lot of fixes sampled at the 1 minute mark, and the majority are sampled at an hourly interval.
+As we know, sampling schedules greatly influence the final results of many older analytical methods like KDEs. Thus, knowing our sampling schedule is useful information that we can provide to our subsequent home range estimates, so we can weight them by the sampling schedule accordingly. 
+``` {r}
+# checking sampling schedule using dt.plot()
+ctmm::dt.plot(duck1_y2_tel)
+title("Duck 1 year 2 GPS sampling schedule")
+# save the image
+png(
+  "03_plots/duck1_y2_sampling_interval_plot.png",
+  width = 800,
+  height = 600,
+  res = 100
+)
+ctmm::dt.plot(duck1_y2_tel)
+title("Duck 1 year 2 GPS sampling schedule")
+dev.off()
+```
+
+# Variograms
+Variograms are a core part of ctmm. To be honest, they took me a while to wrap my head around!
+Variograms visualise the time autocorrelation structure of the data. They help us look at settlement patterns; if there is an asymptote (flat line), it suggests we have enough data from the animal that we can know it's home range size (i.e. movements back and forth across its home range)
+
+Basically, variograms show the distance (y) between two fixes separated by a given time lag (x). This means they show the average distance between points 1, 2, 6, 12, 24 months apart. At the 1-month lag, this also includes the distance between points in months 2 and 3, or 9 and 10. 
+
+We can also opt to include the sampling schedule as an argument in the variogram. See what happens if you include it or not. 
+
+``` {r}
+# Assign the sampling schedule as an object and
+# supply it as the ‘dt’ argument in a variogram
+duck1_y2_dt <- c((1 / 60), 1) %#% "hour" # 1min and 1h are main sampling schedules
+level <- c(0.5, 0.95) # 5-% ad 95% confidence intervals
+
+# Make our variogram
+vg_duck1_y2 <- ctmm::variogram(duck1_y2_tel, dt = duck1_y2_dt, res = 2)
+plot(vg_duck1_y2, fraction = 1, level = level)
+title("Duck1 year 2 variogram")
+
+# save image
+png("03_plots/duck1_y2_variogram.png", width = 800, height = 600, res = 100)
+plot(vg_duck1_y2, fraction = 1, level = level)
+title("Duck1 year 2 variogram")
+dev.off()
+```
+
+# Periodograms
+Periodograms visualise the periodicity/temporal cycles in the data - e.g daily, monthly, seasonal patterns. 
+For example, we might see a spike in the periodogram if the duck is very active on the new moon, or following the tides, or has a yearly migration pattern
+``` {r}
+# periodograms in ctmm
+pg_duck1_y2 <- ctmm::periodogram(duck1_y2_tel, res.time = 2, fast = 2)
+
+# plot periodogram without diagnostics
+plot(pg_duck1_y2, max = TRUE, cex = 0.5)
+title("Duck 1 year 2 periodogram")
+```
+
+Based on the periodogram above, we can see a spike at the daily mark. Is this a legitimate pattern, or an artefact of the sampling schedule?
+
+We can run a diagnostic periodogram to compare the actual data to a simulation based purely on the sampling schedule.
+If the red diagnostic points overlap with the black real data points, then it is just an artefact
+
+``` {r}
+plot(pg_duck1_y2, diagnostic = TRUE, max = TRUE, cex = 0.5)
+title("Duck 1 year 2 diagnostic periodogram")
+```
+
+We can see that the red and black dots overlap on the daily mark, it is an artefact of the sampling schedule. There is a bit of divergence at the ~monthly mark; maybe the duck shows some rough monthly patterns in movement?
+
+Remember to save your plots!
+``` {r}
+# save plots
+# basic periodogram
+png("03_plots/duck1_y2_periodogram", width = 800, height = 600, res = 100)
+plot(pg_duck1_y2, max = TRUE, cex = 0.5)
+title("Duck 1 year 2 periodogram")
+dev.off()
+
+# diagnostic periodogram
+png(
+  "03_plots/duck1_y2_variogram_diagnostic.png",
+  width = 800,
+  height = 600,
+  res = 100
+)
+plot(pg_duck1_y2, diagnostic = TRUE, max = TRUE, cex = 0.5)
+title("Duck 1 year 2 diagnostic periodogram")
+dev.off()
+```
+
+# Fitting movement models
+Finally, we have come to the main function of ctmm; fitting continous time movement models to our data. Once we've done this,we can estimate home ranges, occurrence distributions, average speeds and more. 
+
+First, we need to tune our variogram, which will provide the model parameters. This is done using ctmm.guess().
+Some tips:
+Change parameters by pressing on the grey cog in the top left corner of the plot. 
+We want the variogram red line to go through as many black dots as possible. 
+The initial guesstimate is normally fine.
+Note the values it takes so you can recreate the model if needed. Then, click "Save to GUESS".
+Set the 'name' so you can save multiple GUESS objects (e.g. for different ducks)
+Uou can set error = TRUE if you want to include a model of gps error in the model. HOWEVER! This massively increases model run times. It's your choice :) 
+If you want to include the error in your model, tick the error(logical) button in the GUESS tab
+
+
+``` {r}
+# use ctmm.guess() to tune our variogram
+ctmm::ctmm.guess(
+  duck1_y2_tel,
+  name = "duck1_y2_guess",
+  CTMM = ctmm(error = FALSE)
+)
+```
+
+Now we've got our GUESS saved, we provide it to ctmm.select() along with our telemetry data. This function fits our data to each of the ctmms and ranks them to identify the best model that matches our data. This is obtained by extracting the first row/component of the FIT object using double square brackets [[1]]
+``` {r}
+# stepwise model fitting
+duck1_y2_tel_FIT <- ctmm.select(
+  duck1_y2_tel,
+  duck1_y2_guess,
+  trace = TRUE,
+  verbose = TRUE,
+  cores = 4
+)
+# if you get errors on your platform, try cores = 1
+# running the models here can take a while, especially if you have big data
+
+summary(duck1_y2_tel_FIT)
+#                        ΔAICc ΔRMSPE (m) DOF[area]
+# OU anisotropic      0.000000   915.1177  117.1569
+# OUF anisotropic     1.972886   882.3501  124.6643
+# OU               2074.119830   604.3268  140.1366
+# OUF              2076.096065   578.9808  147.7729
+# IID anisotropic 30026.387157     0.0000 5662.0000
+# OUf anisotropic 30028.390339     0.0000 5662.0000
+
+# extract highest performing model
+duck1_y2_OU_aniso <- duck1_y2_tel_FIT[[1]]
+```
+
+# Home range estimation using ctmms
+Great! Now we have our fitted model, we can estimate a home range from it. It is important to understand the fitted model, as home range analyses are not appropriate on some, mainly if the animal was not tracked long enough to show range residency. This might also happen if you are tracking a migratory animal, and your telemetry data stops in the middle of it's migration; in this case, subset your data to when it had a range-resident phase, e.g. like before it starts migrating.
+
+If you are using an IID model, you will get a classic KDE back.
+In this example, we are using an OU model and will weight our AKDE (autocorrelated kernel density estimate) so it factors in the data's different sampling schedules.
+
+We will also plot it below.
+
+Importantly, home range estimations can be considered projection of future space use, assuming the animal doesn't decide to migrate somewhere else. Read more from the authors to learn more. Depending on your data, you might notice AKDEs might be bigger than KDEs made from the same data - sometimes a lot bigger, depending on your movement data. 
+
+``` {r}
+# run our weighted AKDE (wAKDE)
+duck1_y2_wAKDE <- akde(
+  data = duck1_y2_tel,
+  CTMM = duck1_y2_OU_aniso,
+  weights = TRUE,
+  fast = TRUE,
+  dt.plot = TRUE,
+  dt = c((1 / 60) %#% 'hour')
+) # bandwidth of 1 min
+# these models can take a while to run.
+# save your file as .RData
+save(duck1_y2_wAKDE, file = "01_tidy_data/duck1_y2_wAKDE.RData")
+
+# plotting akde
+# calculate extent (basically home range bounding box)
+duck1_y2_ext <- extent(
+  list(duck1_y2_wAKDE), # list in case you want to include other extents e.g. for year 1 or 3
+  level = 0.95, # show 95% CIs
+  complete = TRUE
+) # complete calculates coords extent of UD objects
+# plot
+plot(duck1_y2_wAKDE, xlim = duck1_y2_ext$x, ylim = duck1_y2_ext$y)
+plot(duck1_y2_tel, add = TRUE) # add our GPS points
+title(expression("Duck 1 year 2 weighted AKDE"["C"]))
+
+# save image
+png("03_plots/duck1_y2_wAKDE.png", width = 800, height = 600, res = 100)
+plot(duck1_y2_wAKDE, xlim = duck1_y2_ext$x, ylim = duck1_y2_ext$y)
+plot(duck1_y2_tel, add = TRUE) # add our GPS points
+title(expression("Duck 1 year 2 weighted AKDE"["C"]))
+dev.off()
+```
+
+To measure the area of your home range object, use summary(). You can also save the home range object as a shapefile (below)- for which we can specify any confidence interval/quartile size (e.g. the 50% home range, 45%, you name it) - and measure the shapefile area.
+``` {r}
+# how big is the area?
+summary(duck1_y2_wAKDE)
+# $DOF
+# area bandwidth
+# 117.1569  386.5040
+#
+# $CI
+# low      est     high
+# area (square kilometers) 43.50563 52.59782 62.53994
+#
+# attr(,"class")
+# [1] "area"
+
+# for different CI's size, we can also make a shapefile (below) and measure its area
+```
+
+# Occurrence distributions.
+In the past, tracking data was so coarse that there was not much we could do with it. That's not normally the case anymore.
+Occurrence distributions are a probability surface of the actual movement track of the tracked animal, from the start of our tracking data to the finish. 
+If our sampling regime were theoretically every 1 millisecond, the occ dist would be a 1D line.
+
+``` {r}
+duck1_y2_occ <- ctmm::occurrence(data = duck1_y2_tel, CTMM = duck1_y2_OU_aniso)
+
+plot(duck1_y2_occ)
+title(expression("Duck 1 year 2 occurrence distribution"))
+# these might be less contiguous for birds since they can fly really fast between locations
+
+# save image
+png("03_plots/duck1_y2_occ.png", width = 800, height = 600, res = 100)
+plot(duck1_y2_occ)
+title(expression("Duck 1 year 2 occurrence distribution"))
+dev.off()
+```
+
+# Saving home ranges and occ dists as raster and vector (shapefile) files
+Now we've got our home ranges and occurrence distributions, we might want to make a nice map with them in QGIS, or we might just want to load them again without redoing all the modelling. Trust me, it can take AGES if you use an error-informed model. 
+You can use the writeRaster() and writeVector()  functions to do this. You can then read in your rasters and vectors using the terra package's rast() and vect() functions. 
+
+Of course, you can also save them as .RData if you want.
+
+``` {r}
+# saving home ranges and occ dists as rasters and vectors
+# we can use the writeVector and writeRaster functions for this
+
+# home range first: vectors then rasters
+# vectors (shapefiles)
+# 95% HR
+ctmm::writeVector(
+  duck1_y2_wAKDE,
+  filename = '01_tidy_data/home_ranges/duck1_y2_wAKDE_95',
+  level.UD = 0.95,
+  filetype = "ESRI Shapefile"
+)
+# 50% HR
+ctmm::writeVector(
+  duck1_y2_wAKDE,
+  filename = '01_tidy_data/home_ranges/duck1_y2_wAKDE_50',
+  level.UD = 0.5,
+  filetype = "ESRI Shapefile"
+)
+
+# rasters (no error margins as we just alter the symbology and thresholds of the raster directly)
+ctmm::writeRaster(
+  duck1_y2_wAKDE,
+  filename = '01_tidy_data/home_ranges/duck1_y2_wAKDE.tif'
+)
+
+# occurrence distribution
+# vector shapefile
+ctmm::writeVector(
+  duck1_y2_occ,
+  filename = '01_tidy_data/occ_dists/duck1_y2_occ',
+  filetype = "ESRI Shapefile"
+)
+# raster grid
+ctmm::writeRaster(
+  duck1_y2_occ,
+  filename = '01_tidy_data/occ_dists/duck1_y2_occ.tif'
+)
+```
+
+# Measuring shapefile area
+Here is a quick demo of how to measure the area of our home ranges based on shapefiles. As you will see, it is pretty similar to the area provided by using summary() on the akde object
+
+``` {r}
+# how big is the home range?
+# import our shapefiles and find out!
+# import shapefiles + measure area:
+duck1_y2_wAKDE_50_shp <- terra::vect(
+  '01_tidy_data/home_ranges/duck1_y2_wAKDE_50/duck1_y2_wAKDE_50.shp'
+)
+duck1_y2_wAKDE_95_shp <- terra::vect(
+  '01_tidy_data/home_ranges/duck1_y2_wAKDE_95/duck1_y2_wAKDE_95.shp'
+)
+
+# check the CRS by caling the objects
+# seems to have WGS84 projection
+
+# Calculate area in square kilometers
+# wAKDE_e 50
+expanse(duck1_y2_wAKDE_50_shp, unit = 'km', transform = TRUE)
+
+# 8.86513 10.71948 12.73999
+
+# wAKDE_e 95
+expanse(duck1_y2_wAKDE_95_shp, unit = 'km', transform = TRUE)
+
+# 43.52820 52.62795 62.57137
+
+# as we can see, the 95% home range estimations are very similar to those from
+# summary(akde)
+```
+
+# Speed and distance estimates
+For certain ctmm models (e.g. OUF), you can estimate the average speed and distance travelled for the duration of the telemetry data. However, this didn't work on the OU model. Here are some notes from one of the ctmm authors, Chris Fleming, on why:
+
+"The OU model is one where the persistence of motion is not measurable, because of the coarseness of the data, and you can't resolve speeds or velocity autocorrelation. The true process will have finite velocities, but in coarse data the OU model with its fractal motion and infinite velocities is all that you can estimate from the data alone."
+
+``` {r}
+# speed and distance estimates
+# average speed of a tracked animal
+ctmm::speed(duck1_y2_OU_aniso, duck1_y2_tel)
+
+# given only a movement model and not telemetry data, speed() calculates the mean speed of the Gaussian movement process
+ctmm::speed(duck1_y2_OU_aniso)
+```
+
+# Further notes
+ctmm also has some other functionalities, such as looking at home range overlap (between individuals or rolling home ranges of a given individual, if you wanted), and other inter-individual interactions such as distance metrics (e.g. how far apart did two buffalo stay from each other? Do they like to hang out?)
+
+Refer to the Pairwise Interactions vignette below for more:
+https://ctmm-initiative.github.io/ctmm/articles/interactions.html 
+
+# ctmmweb
+ctmmweb is a shiny app version of ctmm that has most (not all) of the bells and whistles. You may find it more intuitive to use when first starting out.
+Find more information here:
+https://ctmm-initiative.github.io/ctmmwebdoc/
+
+# Congratulations! You have completed this tutorial :)
+
+```

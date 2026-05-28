@@ -1,0 +1,154 @@
+---
+title: "move2 package: Net-Squared Displacement & more"
+format: html
+execute:
+  eval: false
+---
+
+# Net-Squared Displacement 
+Now we've done some more basic analyses, it's time to level up. When studying animal movement, net-squared displacement (NSD) is sometimes pretty useful. This is especially so when we want to learn about an animal's relationship to the places it inhabits, or at least a given point.
+
+NSD simply measures the distance (or "displacement") from a given point (normally the first point in the dataset analysed).
+From this, we can answer the following questions
+- What movement mode does the animal show? Does it migrate, have a set home range, or is it nomadic?
+- Has the animal settled into a set home range?
+- Is the animal exploring new areas further from home/the release point? When? How long?
+
+These are especially pertinent questions when dealing with animal translocations or reintroductions, and/or when studying migratory animals.
+
+Don't just think about this in a 2D sense, think about altitude as well. An animal might move seasonally up to higher altitudes, which aligns well with the ways of interpreting NSD curves to determine movement modes.
+
+# The move2 package
+An easy way to calculate NSD is offered by the move2 package. Building upon the popularity and success of the original move package, this is a great resource. Check out the move2 vignettes and website to learn about what it can do!
+
+First thing's first, we need to convert our data from a tibble or dataframe into a move2 object
+```{r}
+# convert data to move2 object
+duck1_y2_mv <- mt_as_move2(
+  duck1_y2,
+  coords = c("longitude", "latitude"),
+  time_column = "time",
+  track_id_column = "id"
+)
+
+# inspect move2 object
+duck1_y2_mv
+
+# A <move2> with `track_id_column` "UUID" and `time_column` "time"
+# Containing 1 track lasting 365 days in a
+# Simple feature collection with 5668 features and 18 fields
+# Geometry type: POINT
+# Dimension:     XY
+# Bounding box:  xmin: 144.4083 ymin: -38.26497 xmax: 144.5623 ymax: -38.1992
+# CRS:           NA
+# # A tibble: 5,668 × 19
+#    UUID   time                     t altitude altitude_ellipsoid speed
+#  * <chr>  <dttm>               <dbl>    <dbl>              <dbl> <dbl>
+#  1 c4c9a… 2021-01-20 14:58:49 1.61e9      2.1               -1.6   0.3
+#  2 c4c9a… 2021-01-20 15:58:16 1.61e9     11.3                7.6   0
+#  3 c4c9a… 2021-01-20 17:58:49 1.61e9      0.6               -3.1   0.9
+#  4 c4c9a… 2021-01-20 18:59:09 1.61e9    103.                99.2   0
+#  5 c4c9a… 2021-01-20 19:58:10 1.61e9     17.1               13.4   0.3
+#  6 c4c9a… 2021-01-20 20:58:38 1.61e9     48.6               44.9   0.1
+#  7 c4c9a… 2021-01-20 21:58:30 1.61e9     54.7               51     0.1
+#  8 c4c9a… 2021-01-20 22:58:31 1.61e9     85                 81.3   0.6
+#  9 c4c9a… 2021-01-20 23:59:16 1.61e9     76.9               73.2   0.1
+# 10 c4c9a… 2021-01-21 00:58:43 1.61e9     56.1               52.4   0
+# # ℹ 5,658 more rows
+# # ℹ 13 more variables: north_speed <dbl>, east_speed <dbl>,
+# #   course <dbl>, satellite_used <dbl>, positioning_mode <dbl>,
+# #   hor_accuracy <dbl>, ver_accuracy <dbl>,
+# #   gps_time_consumption <dbl>, data_source <chr>, hdop <dbl>,
+# #   vdop <dbl>, distance <dbl>, geometry <POINT>
+# # ℹ Use `print(n = ...)` to see more rows
+# Track features:
+#           UUID
+# 1 c4c9ad1ddc4e
+```
+
+# Data preparation and checks in move2
+We can also do some other checks on the data. For example, we can check the Coordinate Reference System (CRS), which all geospatial data should be assigned. 
+
+In case you hadn't already ordered your tracking data temporally, you can check that using mt_is_time_ordered(). You can also ensure any duplicated rows are removed. We don't want them messing up our analyses!
+
+``` {r}
+# check our CRS
+sf::st_crs(duck1_y2_mv)
+# currently NA
+# provide an appropriate CRS for our data - EPSG:4326
+sf::st_crs(duck1_y2_mv) <- 4326
+
+# check the data is ordered by time
+assertthat::assert_that(mt_is_time_ordered(duck1_y2_mv))
+# check there are no duplicate rows
+duck1_y2_mv <- mt_filter_unique(duck1_y2_mv)
+```
+
+# (Net-Squared) Displacement
+The time has come to make our net-squared displacement columns.
+I just copied the code provided on the move2 vignettes. Again, check them out!
+
+First we will make a displacement column, then we square it. The reason for squaring displacement is basically since it becomes easier to spot changes in the data.
+
+``` {r}
+# create a displacement column
+duck1_y2_mv <- duck1_y2_mv %>%
+  mutate(
+    displacement = c(sf::st_distance(
+      !!!syms(attr(., "sf_column")),
+      (!!!syms(attr(., "sf_column")))[row_number() == 1]
+    ))
+  )
+
+# now make net squared displacement (square displacement)
+duck1_y2_mv <- duck1_y2_mv %>%
+  mutate(nsd = displacement^2)
+
+# summary stats (in km - divided by 1000)
+# displacement - km
+summary(duck1_y2_mv$displacement) / 1000
+#  Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+# 0.000   1.468   3.577   3.212   3.708   7.507
+
+# nsd - km2
+summary(duck1_y2_mv$nsd) / 1000000
+#  Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+#   0.000   2.155  12.793  13.144  13.748  56.350
+```
+
+# Plotting NSD in ggplot
+Of course, no good analysis would be complete without a plot. That's the power of NSD. 
+
+We can use a classic ggplot, like below.
+```{r}
+# plot nsd over time using ggplot
+duck1_y2_mv %>%
+  ggplot() +
+  geom_line(aes(
+    x = time,
+    y = as.numeric(units::set_units(nsd, "km2"))
+  )) +
+  ylab("Distance from start point (km2)") +
+  ggtitle("Duck 1 Year 2 Net Squared Displacement") +
+  theme_bw()
+```
+
+# Plotting NSD using dygraphs
+However! We can also consider using the dygraphs package, which is especially awesome for long time-series datasets where we might want to zoom in and out on different sections of the data.
+
+To use the dygraphs package, we need to turn our data into a timeseries using the xts package. However, xts won't accept a move2 object; the workaround is to extract the nsd column from our move2 object and stick it back onto our original tracking tibble. 
+Since move2 uses the units package, our nsd column in the move2 object is a "units" object, so we also convert it to a plain ol' numeric data type so we can successfully stick it onto our tibble.
+We will also divide nsd by 1,000,000 so it is represented in km2, not m2.
+``` {r}
+duck1_y2 <- duck1_y2 %>%
+  mutate(nsd = as.numeric(duck1_y2_mv$nsd) / 1000000) # convert from m2 to km2
+
+# now we can make the dygraph
+(duck1_y2_nsd_dygraph <- duck1_y2 %>%
+  select(time, nsd) %>%
+  xts::xts(x = .$nsd, order.by = .$time) %>%
+  dygraphs::dygraph() %>%
+  dygraphs::dyAxis("y", label = "Distance from start point (km2)") %>%
+  dygraphs::dyOptions(colors = "blue") %>%
+  dygraphs::dyRangeSelector())
+```
